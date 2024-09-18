@@ -1,7 +1,6 @@
 import random
 from time import sleep
-from typing import Callable
-
+from threading import Thread
 from pyeventbus3.pyeventbus3 import *
 
 from Message import Message, MessageTo
@@ -9,17 +8,25 @@ from Token import Token, TokenState
 from SyncingMessage import SyncingMessage
 from BroadcastMessage import BroadcastMessage
 
+
 class Com(Thread):
+    # Fonction modulaire
+    @staticmethod
+    def mod(x: int, y: int) -> int:
+        return ((x % y) + y) % y
 
-
+    # Fonction pour obtenir le suivant dans l'anneau
+    @staticmethod
+    def next(x: int, y: int) -> int:
+        return (x + 1) % y
+        
     nbProcessCreated = 0
 
     def __init__(self, name: str, nbProcess: int):
         Thread.__init__(self)
-
         self.nbProcess = nbProcess
-        self.myId = Process.nbProcessCreated
-        Process.nbProcessCreated += 1
+        self.myId = Com.nbProcessCreated
+        Com.nbProcessCreated += 1
         self.name = name
 
         PyBus.Instance().register(self, self)
@@ -29,68 +36,61 @@ class Com(Thread):
         self.token_state = TokenState.Null
         self.nbSync = 0
         self.isSyncing = False
-        self.start()
+        self.mailbox = []
 
-
+        self.start()  # Démarrer le thread
 
     def stop(self):
         self.alive = False
         self.join()
 
-    def sendMessage(self, message: Message):
-        self.horloge += 1
-        message.horloge = self.horloge
-        print(Message)
-        print("Je suis", self.name, " ---Message :", message.getObject())
-        PyBus.Instance().post(message)
-
-    #@subscribe(threadMode=Mode.PARALLEL, onEvent=sendMessage)
-    def receiveMessage(self, message: Message):
-        print("Je suis", self.name, " j'ai reçu ---Message :", message.getObject())
+    def inc_clock(self, message: Message):
         self.horloge = max(self.horloge, message.horloge) + 1
 
-    def sendAll(self, obj: any):
-        self.sendMessage(Message(obj))
+    def sendMessage(self, message: Message):
+        self.horloge += 1
+        print(f"Je suis {self.name} --- Message : {message.getPayload()}")
+        PyBus.Instance().post(message)
+
+    def receiveMessage(self, message: Message):
+        print(f"Je suis {self.name}, j'ai reçu *Message : {message.getPayload()} [Added to mailbox]")
+        self.mailbox.append(message)
+        self.inc_clock(message)
+
+    def sendAll(self, payload: any):
+        self.sendMessage(Message(payload))
 
     @subscribe(threadMode=Mode.PARALLEL, onEvent=Message)
     def process(self, event: Message):
         self.receiveMessage(event)
 
-    def broadcast(self, obj: any):
-        self.sendMessage(BroadcastMessage(obj, self.name))
+    def broadcast(self, payload: any):
+        self.sendMessage(BroadcastMessage(payload, self.name))
 
     @subscribe(threadMode=Mode.PARALLEL, onEvent=BroadcastMessage)
     def onBroadcast(self, event: BroadcastMessage):
         if event.from_process != self.name:
             self.receiveMessage(event)
 
-    def sendTo(self, dest: str, obj: any):
-        self.sendMessage(MessageTo(obj, self.name, dest))
+    def sendTo(self, dest: str, payload: any):
+        self.sendMessage(MessageTo(payload, self.name, dest))
 
     @subscribe(threadMode=Mode.PARALLEL, onEvent=MessageTo)
     def onReceive(self, event: MessageTo):
         if event.to_process == self.name:
             self.receiveMessage(event)
 
-    def releaseToken(self):
-        if self.token_state == TokenState.SC:
-            self.token_state = TokenState.Release
-        token = Token()
-        token.from_process = self.myId
-        token.to_process = mod(self.myId + 1, Process.nbProcessCreated)
-        token.nbSync = self.nbSync
-        self.sendMessage(token)
-        self.token_state = TokenState.Null
+    # Section critique
+    def releaseSC(self):
+        self.token_state = TokenState.Release
 
-    def requestToken(self):
+    def requestSC(self):
+        while self.token_state != TokenState.SC:
+            sleep(1)
         self.token_state = TokenState.Requested
-        while self.token_state == TokenState.Requested:
-            if not self.alive:
-                return
-        self.token_state = TokenState.SC
 
     @subscribe(threadMode=Mode.PARALLEL, onEvent=Token)
-    def onToken(self, event: Token):
+    def manageToken(self, event: Token):
         if event.to_process == self.myId:
             self.receiveMessage(event)
             if not self.alive:
@@ -98,30 +98,15 @@ class Com(Thread):
             if self.token_state == TokenState.Requested:
                 self.token_state = TokenState.SC
                 return
-            if self.isSyncing:
-                self.isSyncing = False
-                self.nbSync = mod(event.nbSync + 1, Process.nbProcessCreated)
-                if self.nbSync == 0:
-                    self.sendMessage(SyncingMessage(self.myId))
-            self.releaseToken()
+            self.token_state = TokenState.Null
+            self.sendTokentoNext()
 
-    def doCriticalAction(self, funcToCall: Callable, args: list):
-        self.requestToken()
-        if self.alive:
-            funcToCall(*args)
-            self.releaseToken()
-
-    def criticalActionWarning(self, msg: str):
-        print("[Critical Action], Token used by", self.name, " ---Message :", msg)
+    def sendTokentoNext(self):
+        nextId = Com.next(self.myId, self.nbProcess)
+        self.sendMessage(Token(nextId))
 
     def synchronize(self):
-        self.isSyncing = True
-        while self.isSyncing:
-            if not self.alive:
-                return
-        while self.nbSync != 0:
-            if not self.alive:
-                return
+        PyBus.Instance().post(SyncingMessage(self.myId))
 
     @subscribe(threadMode=Mode.PARALLEL, onEvent=SyncingMessage)
     def onSyncing(self, event: SyncingMessage):
@@ -129,9 +114,15 @@ class Com(Thread):
             self.receiveMessage(event)
             self.nbSync = 0
 
-    def broadcastSync()
-    def stop(self):
-        self.alive = False
+    def broadcastSync(self, payload: any, From: int):
+        if self.myId == From:
+            self.broadcast(payload)
+            self.synchronize()
+        else:
+            while not self.mailbox:
+                sleep(1)
+            print("Message synchronisé reçu")
+            self.synchronize()
 
     def waitStopped(self):
         self.join()

@@ -1,11 +1,11 @@
 
 class Message():
-    def __init__(self, obj: any):
-        self.object = obj
-        self.horloge = None
+    def __init__(self, payload: any):
+        self.payload = payload
+        self.horloge = 0
 
-    def getObject(self: any):
-        return self.object
+    def getPayload(self: any):
+        return self.payload
 
 
 
@@ -15,5 +15,5 @@ class MessageTo(Message):  # Inherit from Message
         self.from_process = from_process
         self.to_process = to_process
 
-    def getObject(self):
-        return super().getObject()  # Call the parent class's getObject method
+    def getPayload(self):
+        return super().getPayload() 

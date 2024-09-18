@@ -1,39 +1,27 @@
 import random
 from time import sleep
-from typing import Callable
-
+from threading import Thread
 from pyeventbus3.pyeventbus3 import *
 
 from Message import Message, MessageTo
 from Token import Token, TokenState
-from SyncingMessage import SyncingMessage
-from BroadcastMessage import BroadcastMessage
-
-def mod(x: int, y: int) -> int:
-    return ((x % y) + y) % y
+from Com import Com
 
 
-class Process(Message):
+class Process(Com):
+    nbProcessCreated = 0
+
     def __init__(self, name: str, nbProcess: int):
-        super().__init__(name : str,nbProcess : int)  # Properly call the parent constructor using super()
+        super().__init__(name, nbProcess)  # Utilisation correcte de super()
 
     def run(self):
-        while self.nbProcess != Process.nbProcessCreated:
-            pass
-        if self.myId == 0:
-            self.releaseToken()
-        self.synchronize()
         loop = 0
         while self.alive:
-            sleep(1)
-
-            # if self.name == "P1":
-            #     self.sendTo("P2", "ga")
-            #     self.doCriticalAction(self.criticalActionWarning, ["BDG"])
-            # if self.name == "P2":
-            #     self.broadcast("P2 broadcast")
-            # if self.name == "P3":
-            #     receiver = str(random.randint(0, self.nbProcess - 1))
-            #     self.sendTo("P" + receiver, "j'envoi sms" + receiver)
+            if self.name == "P1":
+                self.broadcast("Message P1")  
             loop += 1
-        sleep(1)
+            sleep(1)  # Ajout d'un délai pour éviter une boucle trop rapide
+
+    # Diffusion des messages asynchrones
+    def broadcast(self, Message):
+        super().broadcast(Message,self.name)
