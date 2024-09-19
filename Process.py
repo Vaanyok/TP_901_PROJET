@@ -18,10 +18,10 @@ class Process(Com):
         loop = 0
         while self.alive:
             if self.name == "P1":
-                self.broadcast("Message P1")  
+                self.broadcast("PMSG")
             loop += 1
             sleep(1)  # Ajout d'un délai pour éviter une boucle trop rapide
 
     # Diffusion des messages asynchrones
-    def broadcast(self, Message):
-        super().broadcast(Message,self.name)
+    def broadcast(self, message : any):
+        super().broadcast(message)
