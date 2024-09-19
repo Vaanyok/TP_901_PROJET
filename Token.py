@@ -12,11 +12,11 @@ class TokenState(Enum):
 
 
 class Token(Message):
-    def __init__(self):
+    def __init__(self,from_process,to_process):
         Message.__init__(self, "Token")
-        self.from_process = None
-        self.to_process = None
-        self.nbSync = 0
+        self.from_process = from_process
+        self.to_process = to_process
+        
 
 
 

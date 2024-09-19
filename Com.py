@@ -11,44 +11,32 @@ from BroadcastMessage import BroadcastMessage
 class Com(Thread):
 
 
-    def __init__(self, name: str, nbProcess: int):
+    def __init__(self, name: str, id : int, nbProcess: int):
         super().__init__()
         self.nbProcess = nbProcess
-    
         self.name = name
-
+        self.myId = id
         PyBus.Instance().register(self, self)
-
         self.alive = True
         self.horloge = 0  
+        self.cptSynchronize = self.nbProcess-1
+
         self.token_state = TokenState.Null  
         self.mailbox = []  
-
-        # if(self.name=="P0"):
-        #     self.token_manager = TokenManager(self)
-
         self.start()
 
-    @staticmethod
-    def next(x: int, y: int) -> int:
-        return (x + 1) % y
-
-
+    def next(self):
+        return (self.myId + 1) % self.nbProcess
 
     def inc_clock(self, message: Message):
         self.horloge = max(self.horloge, message.horloge) + 1
 
 
-    def stop(self):
-        # self.token_manager.stop()
-        self.alive = False
-        self.join()
 
 
-
-    #SEND
+    ########################SEND
     def sendMessage(self, message: Message):
-        if not isinstance(message, Token):
+        if not isinstance(message, Token) and not isinstance(message, SyncingMessage):
             self.horloge += 1
         print(f"{self.name} --- Envoi du message : {message.getPayload()}")
         print(message)
@@ -60,8 +48,11 @@ class Com(Thread):
     def sendTo(self, dest: str, payload: any):
         self.sendMessage(MessageTo(payload, self.name, dest))
 
+    def broadcast(self, payload: any):
+        message = BroadcastMessage(payload, self.name)
+        self.sendMessage(message)
 
-    #RECEIVE
+    ########################RECEIVE
     @subscribe(threadMode=Mode.PARALLEL, onEvent=BroadcastMessage)
     def onBroadcast(self, event: BroadcastMessage):
         print(event.from_process, self.name)
@@ -69,16 +60,27 @@ class Com(Thread):
             self.receiveMessage(event)
 
     def receiveMessage(self, message: Message):
-        if not isinstance(message, Token):
+
+        if not isinstance(message, Token) and not isinstance(message, SyncingMessage) :
             print(f"{self.name}, j'ai reçu le message : {message.getPayload()} [Ajouté à la boîte aux lettres]")
             self.mailbox.append(message)
             self.inc_clock(message)
+        else:
+            print(f"{self.name}, j'ai reçu le message : {message.getPayload()}")
+
  
+    @subscribe(threadMode=Mode.PARALLEL, onEvent=MessageTo)
+    def onReceive(self, event: MessageTo):
+        if event.to_process == self.name:
+            self.receiveMessage(event)
+    
 
-    def broadcast(self, payload: any):
-        message = BroadcastMessage(payload, self.name)
-        self.sendMessage(message)
 
+    ########################TOKEN
+    def startToken(self):
+        self.sendTokentoNext()
+
+        
     # Gestion de la demande de section critique
     def requestSC(self):
         print(f"{self.name} demande la section critique.")
@@ -93,32 +95,52 @@ class Com(Thread):
     # Gestion du jeton
     @subscribe(threadMode=Mode.PARALLEL, onEvent=Token)
     def manageToken(self, event: Token):
+        #print("EVENT RECU",event.from_process,event.to_process)
         if event.to_process == self.name:
             print(f"Token reçu par {event.from_process}.")
-            #self.token_manager.give_token()
 
             if self.token_state == TokenState.Requested:
                 self.token_state = TokenState.SC
+                
+               
             elif self.token_state == TokenState.Release:
                 self.token_state = TokenState.Null
-                self.sendTokentoNext()
+        
+            self.sendTokentoNext()
+               
 
     def sendTokentoNext(self):
-        nextId = Com.next(self.myId, self.nbProcess)
-        token = Token()
-        token.to_process = nextId
-        self.sendMessage(token)
-        self.token_manager.take_token()
-        print(f"{self.name} a envoyé le jeton à {nextId}.")
+        nextId = "P" + str(self.next())
+        token = Token(self.name,nextId)
+        #print("EVENT ENVOYE",token.from_process,token.to_process)
 
-    # Synchronisation
+        print(f"{self.name} a envoyé le jeton à {nextId}.")
+        sleep(5)
+        self.sendMessage(token)
+
+
+    ###################### Synchronisation
     def synchronize(self):
-        PyBus.Instance().post(SyncingMessage(self.myId))
+        PyBus.Instance().post(SyncingMessage(self.name))
+        print("Synchronisation en attente pour",self.name)
+        while self.cptSynchronize > 0:
+            sleep(1)  # Sleep to avoid busy-waiting
+
+
+        print("Je suis ",self.name," et je suis synchronisé")
+        self.cptSynchronize = self.nbProcess - 1 
+        
 
     @subscribe(threadMode=Mode.PARALLEL, onEvent=SyncingMessage)
     def onSyncing(self, event: SyncingMessage):
-        if event.from_process != self.myId:
+        # Ensure the process doesn't handle its own synchronization messages
+        if event.from_process != self.name:
             self.receiveMessage(event)
+            self.cptSynchronize -= 1
+            print(self.name,self.cptSynchronize)
+
+
+    ####################
 
     def broadcastSync(self, payload: any, from_process: int):
         if self.myId == from_process:
@@ -131,4 +153,9 @@ class Com(Thread):
             self.synchronize()
 
     def waitStopped(self):
+        self.join()
+
+    def stop(self):
+        # self.token_manager.stop()
+        self.alive = False
         self.join()
