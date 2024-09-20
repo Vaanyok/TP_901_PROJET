@@ -3,10 +3,10 @@ from time import sleep
 from threading import Thread
 from pyeventbus3.pyeventbus3 import *
 
-from Message import Message, MessageTo
+from Message import Message, MessageTo, SyncMessageTo
 from Token import Token, TokenState, TokenManager
 from SyncingMessage import SyncingMessage
-from BroadcastMessage import BroadcastMessage
+from BroadcastMessage import BroadcastMessage, BroadcastMessageSync
 
 class Com(Thread):
 
@@ -20,10 +20,11 @@ class Com(Thread):
         self.alive = True
         self.horloge = 0  
         self.cptSynchronize = self.nbProcess-1
-
+        self.Msgobject = null
         self.token_state = TokenState.Null  
         self.mailbox = []  
         self.start()
+        self.receivedSyncMsg = False
 
     def next(self):
         return (self.myId + 1) % self.nbProcess
@@ -140,18 +141,56 @@ class Com(Thread):
             print(self.name,self.cptSynchronize)
 
 
-    ####################
+    #################### Broadcast sync 
+    @subscribe(threadMode=Mode.PARALLEL, onEvent=BroadcastMessageSync)
+    def onBroadcastSync(self,event : BroadcastMessageSync ):
+        if(event.from_process!=self.myId):
+            self.receiveMessage(event)
+            self.receivedSyncMsg = True
 
-    def broadcastSync(self, payload: any, from_process: int):
-        if self.myId == from_process:
-            self.broadcast(payload)
+    def broadcastSync(self, payload : any, From : int ):
+        if self.myId == From:
+            self.sendMessage(BroadcastMessageSync(payload,From))
             self.synchronize()
         else:
-            while not self.mailbox:
+            while not self.receivedSyncMsg:
                 sleep(1)
-            print(f"Message synchronisé reçu par {self.name}")
             self.synchronize()
+            self.receivedSyncMsg = False
+          
+    #################### Message Sync 
 
+    def sendToSync(self,payload : any, dest : int):
+        destName = "P" + str(dest)
+        message = SyncMessageTo(payload,self.name,destName)
+        self.sendMessage(message)
+        while not self.receivedSyncMsg:
+            sleep(1)
+        print("Message bien envoyé, reception confirmé")
+        self.receivedSyncMsg=False
+    
+
+    @subscribe(threadMode=Mode.PARALLEL, onEvent=SyncMessageTo)
+    def recevSync(self,event : SyncMessageTo):
+        if(event.to_process == self.name):
+            self.receivedSyncMsg=True
+            self.Msgobject = event
+            
+
+    def recevFromSync(self, Object : Message, From : int ):
+        while not self.receivedSyncMsg:
+                sleep(1)
+        fromName = "P" + str(From)
+        print("Reception confirmé")
+        ##Message de confirmation
+        message = SyncMessageTo("Message from sync",self.name,fromName)
+        self.sendMessage(message)
+        ##
+        self.receivedSyncMsg=False
+        Object = self.Msgobject
+
+    ###################
+    
     def waitStopped(self):
         self.join()
 

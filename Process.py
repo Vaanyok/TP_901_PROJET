@@ -20,14 +20,21 @@ class Process(Com):
         while self.alive:
             if loop==0 and self.name == "P1":
                  self.broadcast("PMSG")
+            #########
             if loop==1 and self.name == "P2":
                 self.sendTo("P1","P2 for P1")
             if loop==2:
+            #########
                 self.synchronization()
             if loop==3 :
-                self.synchronization()
+                self.broadcastSync()
+            #########
+            if loop==4 and self.name == "P2":
+                self.sendToSync(3)
+            if loop==4 and self.name == "P3":
+                self.recevFromSync(2)
             loop += 1
-            sleep(2)  # Ajout d'un délai pour éviter une boucle trop rapide
+            sleep(5)  # Ajout d'un délai pour éviter une boucle trop rapide
 
     # Diffusion des messages asynchrones
     def broadcast(self, message : any):
@@ -47,4 +54,13 @@ class Process(Com):
             super().requestSC()
 
     def synchronization(self):
-        super().synchronize()      
+        super().synchronize()     
+
+    def broadcastSync(self):
+        super().broadcastSync("Broadcast sync",1)
+
+    def sendToSync(self,dest):
+        super().sendToSync("Message to sync",dest)
+    
+    def recevFromSync(self,From):
+        super().recevFromSync(Message(""),From)
