@@ -31,10 +31,10 @@ class Process(Com):
             # if loop==3 :
             #     self.broadcastSync()
             # #########
-            if loop==4 and self.name == "P2":
-                self.sendToSync(3)
-            if loop==4 and self.name == "P3":
-                self.recevFromSync(2)
+            # if loop==4 and self.name == "P2":
+            #     self.sendToSync(3)
+            # if loop==4 and self.name == "P3":
+            #     self.recevFromSync(2)
             loop += 1
             sleep(10)  # Ajout d'un délai pour éviter une boucle trop rapide
         self.showMessages()
