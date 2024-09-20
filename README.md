@@ -17,3 +17,16 @@ Uzelac Yvann PROJET
             # if loop==4 and self.name == "P3":
             #     self.recevFromSync(2)
 ```
+## Différents tests
+- Loop 0 -> Broadcast 
+- Loop 1 -> Send to
+- Loop 2 -> Synchronisation
+- Loop 3 -> Broadcast sync
+- Loop 4 -> SendToSync / RecevFromSync
+
+## Autres
+La numérotation a été faite, cependant elle n'impacte pas le code principal id != pid 
+Il suffirait de quelques petites minutes pour l'implémenter dans tout le code principal mais pour des raisons de ne casser le code, j'ai préféré séparé ces deux parties
+
+
+
